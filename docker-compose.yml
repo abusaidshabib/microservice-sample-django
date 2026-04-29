@@ -55,6 +55,7 @@ services:
       DB_PASSWORD: postgres
       DB_HOST: db_users
       DB_PORT: "5432"
+      INTERNAL_SERVICE_TOKEN: super-secret-dev-token
     depends_on:
       db_users:
         condition: service_healthy
@@ -78,6 +79,7 @@ services:
       DB_PORT: "5432"
       REDIS_URL: redis://redis:6379/0
       USER_SERVICE_URL: http://user-service:8001
+      INTERNAL_SERVICE_TOKEN: super-secret-dev-token
     depends_on:
       db_orders:
         condition: service_healthy
@@ -100,6 +102,7 @@ services:
       DB_PORT: "5432"
       REDIS_URL: redis://redis:6379/0
       USER_SERVICE_URL: http://user-service:8001
+      INTERNAL_SERVICE_TOKEN: super-secret-dev-token
     depends_on:
       db_orders:
         condition: service_healthy

@@ -1,8 +1,15 @@
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import User
 from .serializers import UserSerializer, RegisterSerializer
+
+
+def _require_service_token(request):
+    """Return True if the request carries a valid inter-service token."""
+    token = request.headers.get("X-Service-Token", "")
+    return token == settings.INTERNAL_SERVICE_TOKEN
 
 
 class HealthView(APIView):
@@ -21,6 +28,8 @@ class RegisterView(APIView):
 
 class UserDetailView(APIView):
     def get(self, request, user_id):
+        if not _require_service_token(request):
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:

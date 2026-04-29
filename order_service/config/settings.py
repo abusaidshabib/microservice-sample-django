@@ -47,3 +47,9 @@ CELERY_RESULT_BACKEND = REDIS_URL
 # Other services
 USER_SERVICE_URL = os.environ.get(
     "USER_SERVICE_URL", "http://user-service:8001")
+
+# Shared secret for inter-service calls — must match across all services
+INTERNAL_SERVICE_TOKEN = os.environ.get("INTERNAL_SERVICE_TOKEN", "")
+if not INTERNAL_SERVICE_TOKEN:
+    raise RuntimeError(
+        "INTERNAL_SERVICE_TOKEN environment variable is not set")
