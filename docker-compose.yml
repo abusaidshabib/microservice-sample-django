@@ -1,0 +1,111 @@
+services:
+
+  # ── Databases ────────────────────────────────────────────────────
+  db_users:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: db_users
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db_users_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d db_users" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db_orders:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: db_orders
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db_orders_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d db_orders" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis (Celery broker) ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── User Service ──────────────────────────────────────────────────
+  user-service:
+    build: ./user_service
+    command: >
+      sh -c "python manage.py makemigrations users &&
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8001"
+    ports:
+      - "8001:8001"
+    environment:
+      SECRET_KEY: dev-secret-key
+      DEBUG: "True"
+      DB_NAME: db_users
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db_users
+      DB_PORT: "5432"
+    depends_on:
+      db_users:
+        condition: service_healthy
+
+  # ── Order Service ─────────────────────────────────────────────────
+  order-service:
+    build: ./order_service
+    command: >
+      sh -c "python manage.py makemigrations orders &&
+             python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8002"
+    ports:
+      - "8002:8002"
+    environment:
+      SECRET_KEY: dev-secret-key
+      DEBUG: "True"
+      DB_NAME: db_orders
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db_orders
+      DB_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      USER_SERVICE_URL: http://user-service:8001
+    depends_on:
+      db_orders:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+
+  # ── Celery Worker (for Order Service async tasks) ─────────────────
+  celery-worker:
+    build: ./order_service
+    command: celery -A config worker --loglevel=info
+    environment:
+      SECRET_KEY: dev-secret-key
+      DEBUG: "True"
+      DB_NAME: db_orders
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db_orders
+      DB_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      USER_SERVICE_URL: http://user-service:8001
+    depends_on:
+      db_orders:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  db_users_data:
+  db_orders_data:
