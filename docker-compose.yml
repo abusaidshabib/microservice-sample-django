@@ -38,6 +38,163 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Redis Cluster (Django cache — 3 masters + 3 replicas) ─────────
+  #
+  #  Uses the official redis:7-alpine image on every node.
+  #  redis-cluster-init is a one-shot container that calls
+  #  `redis-cli --cluster create` once the six nodes are ready.
+  #  App services wait on redis-node-0: service_healthy (cluster_state:ok).
+  #
+  redis-node-0:
+    image: redis:7-alpine
+    command: >
+      redis-server --cluster-enabled yes --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000 --appendonly yes --requirepass
+      redis_cluster_secret --masterauth redis_cluster_secret
+    volumes:
+      - redis_node_0:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a redis_cluster_secret cluster info 2>/dev/null | grep
+            -q cluster_state:ok",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis-node-1:
+    image: redis:7-alpine
+    command: >
+      redis-server --cluster-enabled yes --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000 --appendonly yes --requirepass
+      redis_cluster_secret --masterauth redis_cluster_secret
+    volumes:
+      - redis_node_1:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a redis_cluster_secret cluster info 2>/dev/null | grep
+            -q cluster_state:ok",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis-node-2:
+    image: redis:7-alpine
+    command: >
+      redis-server --cluster-enabled yes --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000 --appendonly yes --requirepass
+      redis_cluster_secret --masterauth redis_cluster_secret
+    volumes:
+      - redis_node_2:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a redis_cluster_secret cluster info 2>/dev/null | grep
+            -q cluster_state:ok",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis-node-3:
+    image: redis:7-alpine
+    command: >
+      redis-server --cluster-enabled yes --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000 --appendonly yes --requirepass
+      redis_cluster_secret --masterauth redis_cluster_secret
+    volumes:
+      - redis_node_3:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a redis_cluster_secret cluster info 2>/dev/null | grep
+            -q cluster_state:ok",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis-node-4:
+    image: redis:7-alpine
+    command: >
+      redis-server --cluster-enabled yes --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000 --appendonly yes --requirepass
+      redis_cluster_secret --masterauth redis_cluster_secret
+    volumes:
+      - redis_node_4:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a redis_cluster_secret cluster info 2>/dev/null | grep
+            -q cluster_state:ok",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis-node-5:
+    image: redis:7-alpine
+    command: >
+      redis-server --cluster-enabled yes --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000 --appendonly yes --requirepass
+      redis_cluster_secret --masterauth redis_cluster_secret
+    volumes:
+      - redis_node_5:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "redis-cli -a redis_cluster_secret cluster info 2>/dev/null | grep
+            -q cluster_state:ok",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # One-shot container: bootstraps the cluster on first run, skips on restart.
+  redis-cluster-init:
+    image: redis:7-alpine
+    restart: on-failure
+    depends_on:
+      redis-node-0:
+        condition: service_started
+      redis-node-1:
+        condition: service_started
+      redis-node-2:
+        condition: service_started
+      redis-node-3:
+        condition: service_started
+      redis-node-4:
+        condition: service_started
+      redis-node-5:
+        condition: service_started
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        sleep 5
+        if redis-cli -a redis_cluster_secret -h redis-node-0 cluster info 2>/dev/null | grep -q cluster_state:ok; then
+          echo "Redis cluster already initialised."
+        else
+          redis-cli -a redis_cluster_secret --cluster create \
+            redis-node-0:6379 redis-node-1:6379 redis-node-2:6379 \
+            redis-node-3:6379 redis-node-4:6379 redis-node-5:6379 \
+            --cluster-replicas 1 --cluster-yes
+        fi
+
   # ── User Service ──────────────────────────────────────────────────
   user-service:
     build: ./user_service
@@ -56,8 +213,13 @@ services:
       DB_HOST: db_users
       DB_PORT: "5432"
       INTERNAL_SERVICE_TOKEN: super-secret-dev-token
+      REDIS_CLUSTER_NODES: "redis-node-0:6379,redis-node-1:6379,redis-node-2:6379,red\
+        is-node-3:6379,redis-node-4:6379,redis-node-5:6379"
+      REDIS_CLUSTER_PASSWORD: "redis_cluster_secret"
     depends_on:
       db_users:
+        condition: service_healthy
+      redis-node-0:
         condition: service_healthy
 
   # ── Order Service ─────────────────────────────────────────────────
@@ -80,10 +242,15 @@ services:
       REDIS_URL: redis://redis:6379/0
       USER_SERVICE_URL: http://user-service:8001
       INTERNAL_SERVICE_TOKEN: super-secret-dev-token
+      REDIS_CLUSTER_NODES: "redis-node-0:6379,redis-node-1:6379,redis-node-2:6379,red\
+        is-node-3:6379,redis-node-4:6379,redis-node-5:6379"
+      REDIS_CLUSTER_PASSWORD: "redis_cluster_secret"
     depends_on:
       db_orders:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      redis-node-0:
         condition: service_healthy
       user-service:
         condition: service_started
@@ -103,12 +270,23 @@ services:
       REDIS_URL: redis://redis:6379/0
       USER_SERVICE_URL: http://user-service:8001
       INTERNAL_SERVICE_TOKEN: super-secret-dev-token
+      REDIS_CLUSTER_NODES: "redis-node-0:6379,redis-node-1:6379,redis-node-2:6379,red\
+        is-node-3:6379,redis-node-4:6379,redis-node-5:6379"
+      REDIS_CLUSTER_PASSWORD: "redis_cluster_secret"
     depends_on:
       db_orders:
         condition: service_healthy
       redis:
         condition: service_healthy
+      redis-node-0:
+        condition: service_healthy
 
 volumes:
   db_users_data:
   db_orders_data:
+  redis_node_0:
+  redis_node_1:
+  redis_node_2:
+  redis_node_3:
+  redis_node_4:
+  redis_node_5:
